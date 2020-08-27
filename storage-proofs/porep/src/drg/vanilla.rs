@@ -235,7 +235,7 @@ where
 impl<'a, H, G> ProofScheme<'a> for DrgPoRep<'a, H, G>
 where
     H: 'static + Hasher,
-    G: 'a + Graph<H> + ParameterSetMetadata,
+    G: 'a + Graph<H> + ParameterSetMetadata + Send + Sync, //editByWcl 20200827
 {
     type PublicParams = PublicParams<H, G>;
     type SetupParams = SetupParams;

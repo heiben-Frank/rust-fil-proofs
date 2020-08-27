@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher as StdHasher};
 use std::marker::PhantomData;
 use std::path::{Path, PathBuf};
-
+use rayon::prelude::*;//addByWcl 20200827
 use anyhow::{ensure, Context, Result};
 use bincode::deserialize;
 use generic_array::typenum::Unsigned;
@@ -469,15 +469,16 @@ pub fn generate_window_post<Tree: 'static + MerkleTreeTrait>(
     let pub_params: compound_proof::PublicParams<fallback::FallbackPoSt<Tree>> =
         fallback::FallbackPoStCompound::setup(&setup_params)?;
     let groth_params = get_post_params::<Tree>(&post_config)?;
-
+    info!("!!!wcl start generate mekle_tree");
     let trees: Vec<_> = replicas
-        .iter()
+        .par_iter() //editByWcl 20200827
         .map(|(_id, replica)| replica.merkle_tree(post_config.sector_size))
         .collect::<Result<_>>()?;
 
+    info!("!!!wcl end   generate mekle_tree");
     let mut pub_sectors = Vec::with_capacity(sector_count);
     let mut priv_sectors = Vec::with_capacity(sector_count);
-
+    info!("!!!wcl start prepare sectors");
     for ((sector_id, replica), tree) in replicas.iter().zip(trees.iter()) {
         let comm_r = replica.safe_comm_r()?;
         let comm_c = replica.safe_comm_c()?;
@@ -494,6 +495,7 @@ pub fn generate_window_post<Tree: 'static + MerkleTreeTrait>(
         });
     }
 
+    info!("!!!wcl end   prepare sectors");
     let pub_inputs = fallback::PublicInputs {
         randomness: randomness_safe,
         prover_id: prover_id_safe,
@@ -505,12 +507,14 @@ pub fn generate_window_post<Tree: 'static + MerkleTreeTrait>(
         sectors: &priv_sectors,
     };
 
+    info!("!!!wcl start proof");
     let proof = fallback::FallbackPoStCompound::prove(
         &pub_params,
         &pub_inputs,
         &priv_inputs,
         &groth_params,
     )?;
+    info!("!!!wcl end proof");
 
     info!("generate_window_post:finish");
 
@@ -576,7 +580,7 @@ pub fn verify_window_post<Tree: 'static + MerkleTreeTrait>(
             minimum_challenge_count: post_config.challenge_count * post_config.sector_count,
         },
     )?;
-
+    info!("!!!wcl is_valid=({})", is_valid);
     if !is_valid {
         return Ok(false);
     }

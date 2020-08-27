@@ -1,5 +1,5 @@
 use std::time::Instant;
-
+use rayon::prelude::*;//addByWcl 20200827
 use log::info;
 use serde::de::DeserializeOwned;
 use serde::ser::Serialize;
@@ -8,11 +8,19 @@ use crate::error::Result;
 
 /// The ProofScheme trait provides the methods that any proof scheme needs to implement.
 pub trait ProofScheme<'a> {
+    /* editByWcl 20200827 origin
     type PublicParams: Clone;
     type SetupParams: Clone;
     type PublicInputs: Clone;
     type PrivateInputs;
     type Proof: Clone + Serialize + DeserializeOwned;
+    type Requirements: Default;
+*/
+    type PublicParams: Clone + Sync + Send;
+    type SetupParams: Clone + Sync + Send;
+    type PublicInputs: Clone + Sync + Send;
+    type PrivateInputs: Send + Sync;
+    type Proof: Clone + Serialize + DeserializeOwned + Send;
     type Requirements: Default;
 
     /// setup is used to generate public parameters from setup parameters in order to specialize
@@ -38,15 +46,16 @@ pub trait ProofScheme<'a> {
         let start = Instant::now();
 
         let result = (0..partition_count)
+            .into_par_iter()//addByWcl 20200827
             .map(|k| {
                 info!("generating groth proof {}.", k);
-                let start = Instant::now();
+                //let start = Instant::now();
 
                 let partition_pub_in = Self::with_partition((*pub_in).clone(), Some(k));
                 let proof = Self::prove(pub_params, &partition_pub_in, priv_in);
 
-                let proof_time = start.elapsed();
-                info!("groth_proof_time: {:?}", proof_time);
+                //let proof_time = start.elapsed();
+                //info!("groth_proof_time: {:?}", proof_time);
 
                 proof
             })
