@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use anyhow::ensure;
 use byteorder::{ByteOrder, LittleEndian};
 use generic_array::typenum::Unsigned;
-use log::trace;
+use log::{trace, error};
 use paired::bls12_381::Fr;
 use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -302,12 +302,17 @@ impl<'a, Tree: 'a + MerkleTreeTrait> ProofScheme<'a> for FallbackPoSt<'a, Tree> 
             trace!("proving partition {}", j);
 
             let mut proofs = Vec::with_capacity(num_sectors_per_chunk);
-
+/*
             for (i, (pub_sector, priv_sector)) in pub_sectors_chunk
                 .iter()
                 .zip(priv_sectors_chunk.iter())
                 .enumerate()
-            {
+                */
+            let mut proofs_result = pub_sectors_chunk
+                .par_iter()
+                .zip(priv_sectors_chunk.par_iter())
+                .enumerate()
+                .map(|(i, (pub_sector, priv_sector))| {
                 let tree = priv_sector.tree;
                 let sector_id = pub_sector.id;
                 let tree_leafs = tree.leafs();
@@ -336,13 +341,17 @@ impl<'a, Tree: 'a + MerkleTreeTrait> ProofScheme<'a> for FallbackPoSt<'a, Tree> 
                     })
                     .collect::<Result<Vec<_>>>()?;
 
-                proofs.push(SectorProof {
+                    Ok(SectorProof {
                     inclusion_proofs,
                     comm_c: priv_sector.comm_c,
                     comm_r_last: priv_sector.comm_r_last,
-                });
-            }
+                    })
+                })
+           .collect::<Result<Vec<_>>>()?; 
 
+           for prov in proofs_result {
+               proofs.push(prov);
+           }
             // If there were less than the required number of sectors provided, we duplicate the last one
             // to pad the proof out, such that it works in the circuit part.
             while proofs.len() < num_sectors_per_chunk {
@@ -410,6 +419,7 @@ impl<'a, Tree: 'a + MerkleTreeTrait> ProofScheme<'a> for FallbackPoSt<'a, Tree> 
                     &comm_r_last,
                 )) != AsRef::<[u8]>::as_ref(comm_r)
                 {
+                    error!("comm_r_last not match in:{}", sector_id);
                     return Ok(false);
                 }
 
@@ -432,6 +442,7 @@ impl<'a, Tree: 'a + MerkleTreeTrait> ProofScheme<'a> for FallbackPoSt<'a, Tree> 
 
                     // validate all comm_r_lasts match
                     if inclusion_proof.root() != comm_r_last {
+                        error!("inclusion_proof not match in:{}", sector_id);
                         return Ok(false);
                     }
 
@@ -440,10 +451,13 @@ impl<'a, Tree: 'a + MerkleTreeTrait> ProofScheme<'a> for FallbackPoSt<'a, Tree> 
                         inclusion_proof.expected_len(pub_params.sector_size as usize / NODE_SIZE);
 
                     if expected_path_length != inclusion_proof.path().len() {
+                        error!("expected_path_length not match in:{}", sector_id);
                         return Ok(false);
                     }
 
                     if !inclusion_proof.validate(challenged_leaf_start as usize) {
+
+                        error!("inclusion_proof invalidate in:{}", sector_id);
                         return Ok(false);
                     }
                 }
