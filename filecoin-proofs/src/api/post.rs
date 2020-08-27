@@ -6,7 +6,7 @@ use rayon::prelude::*;//addByWcl 20200827
 use anyhow::{ensure, Context, Result};
 use bincode::deserialize;
 use generic_array::typenum::Unsigned;
-use log::{info, trace};
+use log::{info, trace, error};
 use merkletree::store::StoreConfig;
 use storage_proofs::cache_key::CacheKey;
 use storage_proofs::compound_proof::{self, CompoundProof};
@@ -473,7 +473,17 @@ pub fn generate_window_post<Tree: 'static + MerkleTreeTrait>(
     info!("!!!wcl start generate mekle_tree");
     let trees: Vec<_> = replicas
         .par_iter() //editByWcl 20200827
-        .map(|(_id, replica)| replica.merkle_tree(post_config.sector_size))
+        .map(|(id, replica)| {
+            let result = replica.merkle_tree(post_config.sector_size);
+            match result {
+                Ok(tree) => return Ok(tree),
+                Err(err) => {
+                    error!("merkel_tree failed from file:{},{}", id, err);
+                    return Err(err);
+                }
+            }
+           // replica.merkle_tree(post_config.sector_size))
+        })
         .collect::<Result<_>>()?;
 
     info!("!!!wcl end   generate mekle_tree");
